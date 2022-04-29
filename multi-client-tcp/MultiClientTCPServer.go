@@ -16,9 +16,21 @@ import (
     "os"
     "os/signal"
     "syscall"
+    "sync"
 )
 
 func handleConnection(client_conn net.Conn, id int) {
+    // ctrl + c handling
+    c := make(chan os.Signal)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+    go func() {
+        <-c
+        TotalClient = TotalClient - 1;        
+        client_conn.Close()
+        // fmt.Println("close client socket ", id)
+        wg.Done()  // alert main go routine that i'm done
+    }()
+
     for {
         buffer := make([]byte, 1024)
 
@@ -27,6 +39,7 @@ func handleConnection(client_conn net.Conn, id int) {
             // fmt.Printf("client socket failed to read data from buffer\n")
             log.Fatal(err)
         }
+
         // check the header of the message
         fmt.Printf("Command %s\n",string(buffer[0]))
         switch string(buffer[0]) {
@@ -78,6 +91,7 @@ var LastestId = 0
 var TotalClient = 0
 var Time_start = time.Now()
 var Listener net.Conn
+var wg sync.WaitGroup  // main go routine waits until all of the sub go routines are ended
 
 func main() {
     serverPort := "44089"
@@ -96,8 +110,18 @@ func main() {
     go func() {
         <-c
         Listener.Close()
+        wg.Wait()   // wait until all of the sub routines are ended (== wait until all of the client sockets are closed)
         fmt.Println("Bye bye~")
         os.Exit(0)
+    }()
+
+    // print the number of clients every one minute
+    ticker := time.NewTicker(60 * time.Second)
+    go func() {
+        for {
+            <-ticker.C
+            fmt.Println("The number of conneted clients : ", TotalClient)
+        }
     }()
 
     for {
@@ -111,9 +135,10 @@ func main() {
             LastestId = LastestId + 1;
             fmt.Printf("Connection request from %s\n", conn.RemoteAddr().String())
             fmt.Printf("Client %d connected. Number of connected clients = %d\n", LastestId, TotalClient)
+            wg.Add(1);  // increase the number of sub routines the main go routine has to wait
         }
         
-        // client socket do works
+        // client socket do its work
         go handleConnection(conn, LastestId)
     }
 }
