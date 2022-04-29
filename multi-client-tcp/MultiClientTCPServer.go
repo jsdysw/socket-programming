@@ -19,23 +19,12 @@ import (
 )
 
 func handleConnection(client_conn net.Conn, id int) {
-    // if main go routine ends, close all the client conns
-    // c := make(chan os.Signal)
-    // signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-    // go func() {
-    //     <-c
-    //     Listener.Close()
-    //     // 열려있는 애들 다 닫자.
-    //     fmt.Println("--------client closed")
-    //     os.Exit(0)
-    // }()
-
     for {
         buffer := make([]byte, 1024)
 
         count, err := client_conn.Read(buffer)
         if err != nil {
-            fmt.Printf("client socket failed to read data from buffer\n")
+            // fmt.Printf("client socket failed to read data from buffer\n")
             log.Fatal(err)
         }
         // check the header of the message
@@ -82,7 +71,6 @@ func handleConnection(client_conn net.Conn, id int) {
             fmt.Printf("Wrong option\n")
         }
     }
-    // close client conn 
 }
 
 var Total_served_commands = 0
@@ -97,7 +85,7 @@ func main() {
     // create server socket
     Listener, err:= net.Listen("tcp", ":" + serverPort)
     if err != nil {
-        fmt.Printf("create server socket failed\n")
+        // fmt.Printf("create server socket failed\n")
         log.Fatal(err)
     }
     fmt.Printf("Server is ready to receive on port %s\n", serverPort)
