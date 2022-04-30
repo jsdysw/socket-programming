@@ -16,21 +16,10 @@ import (
     "os"
     "os/signal"
     "syscall"
-    "sync"
+    "sync/atomic"
 )
 
 func handleConnection(client_conn net.Conn, id int) {
-    // ctrl + c handling
-    c := make(chan os.Signal)
-    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-    go func() {
-        <-c
-        TotalClient = TotalClient - 1;        
-        client_conn.Close()
-        // fmt.Println("close client socket ", id)
-        wg.Done()  // alert main go routine that i'm done
-    }()
-
     for {
         buffer := make([]byte, 1024)
 
@@ -44,17 +33,17 @@ func handleConnection(client_conn net.Conn, id int) {
         fmt.Printf("Command %s\n",string(buffer[0]))
         switch string(buffer[0]) {
         case "1": 
-            Total_served_commands += 1
+            atomic.AddInt64(&Total_served_commands, 1)  // mutul exclusion
             client_conn.Write(bytes.ToUpper(buffer[1:count]))
         case "2":
-            Total_served_commands += 1
+            atomic.AddInt64(&Total_served_commands, 1)
             client_conn.Write([]byte(client_conn.RemoteAddr().String()))   
         case "3":
-            Total_served_commands += 1
-            served_count_string := strconv.Itoa(Total_served_commands)
+            atomic.AddInt64(&Total_served_commands, 1)
+            served_count_string := strconv.FormatInt(atomic.LoadInt64(&Total_served_commands), 10)
             client_conn.Write([]byte(served_count_string)) 
         case "4":
-            Total_served_commands += 1
+            atomic.AddInt64(&Total_served_commands, 1)
 
             time_elapsed := time.Since(Time_start)
 
@@ -76,9 +65,9 @@ func handleConnection(client_conn net.Conn, id int) {
             client_conn.Write([]byte(result))
         case "5":
             // close client connection
-            TotalClient = TotalClient - 1;
+            atomic.AddInt64(&TotalClient, -1)
             client_conn.Close()
-            fmt.Printf("Client %d disconnected. Number of connected clients = %d\n", id, TotalClient)
+            fmt.Printf("Client %d disconnected. Number of connected clients = %d\n", id, atomic.LoadInt64(&TotalClient))
             return
         default :
             fmt.Printf("Wrong option\n")
@@ -86,15 +75,17 @@ func handleConnection(client_conn net.Conn, id int) {
     }
 }
 
-var Total_served_commands = 0
+
+var Total_served_commands int64  // atomic variable
 var LastestId = 0
-var TotalClient = 0
+var TotalClient int64  // atomic variable
 var Time_start = time.Now()
 var Listener net.Conn
-var wg sync.WaitGroup  // main go routine waits until all of the sub go routines are ended
 
 func main() {
     serverPort := "44089"
+    Total_served_commands = 0
+    TotalClient = 0
  
     // create server socket
     Listener, err:= net.Listen("tcp", ":" + serverPort)
@@ -109,9 +100,9 @@ func main() {
     signal.Notify(c, os.Interrupt, syscall.SIGTERM)
     go func() {
         <-c
-        Listener.Close()
-        wg.Wait()   // wait until all of the sub routines are ended (== wait until all of the client sockets are closed)
         fmt.Println("Bye bye~")
+        Listener.Close()
+        close(c)
         os.Exit(0)
     }()
 
@@ -120,7 +111,7 @@ func main() {
     go func() {
         for {
             <-ticker.C
-            fmt.Println("The number of conneted clients : ", TotalClient)
+            fmt.Println("The number of conneted clients : ", atomic.LoadInt64(&TotalClient))
         }
     }()
 
@@ -131,11 +122,10 @@ func main() {
             // fmt.Printf("create client socket failed\n")
             log.Fatal(err)
         } else {
-            TotalClient = TotalClient + 1;
-            LastestId = LastestId + 1;
+            atomic.AddInt64(&TotalClient, 1); // for mutual exclusion
+            LastestId = LastestId + 1 
             fmt.Printf("Connection request from %s\n", conn.RemoteAddr().String())
-            fmt.Printf("Client %d connected. Number of connected clients = %d\n", LastestId, TotalClient)
-            wg.Add(1);  // increase the number of sub routines the main go routine has to wait
+            fmt.Printf("Client %d connected. Number of connected clients = %d\n", LastestId, atomic.LoadInt64(&TotalClient))
         }
         
         // client socket do its work

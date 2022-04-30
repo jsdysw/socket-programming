@@ -42,7 +42,6 @@ func main() {
         listener.Close()
         fmt.Println("Bye bye~")
         os.Exit(0)
-        return
     }()
 
     conn, err:= listener.Accept()
@@ -63,7 +62,6 @@ func main() {
             listener.Close()
             fmt.Println("Bye bye~")
             os.Exit(0)
-            return
         }()
         
         buffer := make([]byte, 1024)
