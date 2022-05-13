@@ -4,64 +4,74 @@
  * ID : 20174089
  **/
 
- package main
+package main
 
- import (
-     "bufio"
-     "fmt"
-     "net"
-     "os"
-     "time"
-     "strings"
-     "log"
-     "os/signal"
-     "syscall"
- )
+import (
+    "bufio"
+    "fmt"
+    "net"
+    "os"
+    "time"
+    "strings"
+    "log"
+    "os/signal"
+    "syscall"
+)
  
- func main() {
-     // make TCP Connection with server
-     serverName := "127.0.0.1"
-     // serverName := "nsl2.cau.ac.kr"
-     serverPort := "44089"
+func main() {
+    // make TCP Connection with server
+    serverName := "127.0.0.1"
+    // serverName := "nsl2.cau.ac.kr"
+    serverPort := "44089"
+    argsWithProg := os.Args[1]
  
-     conn, err:= net.Dial("tcp", serverName+":"+serverPort)
-     if err != nil {
-         log.Fatal(err)
-     }
- 
-     localAddr := conn.LocalAddr().(*net.TCPAddr)
-     fmt.Printf("Client is running on port %d\n", localAddr.Port)
+    conn, err:= net.Dial("tcp", serverName+":"+serverPort)
+    if err != nil {
+        log.Fatal(err)
+    }
      
-     // ctrl + c handling
-     c := make(chan os.Signal)
-     signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-     go func() {
-         <-c
-         fmt.Println("Bye bye~")
-         input := "5"
-         conn.Write([]byte(input))
-         conn.Close()
-         os.Exit(0)
-     }()
+    // send client's nickname to the server
+    conn.Write([]byte(argsWithProg))
+    // fmt.Printf("my nickname %s\n", argsWithProg)
+    localAddr := conn.LocalAddr().(*net.TCPAddr)
+    // fmt.Printf("Client is running on port %d\n", localAddr.Port)
+    
+    // read welcome msg from the server and print
+    buffer := make([]byte, 1024)
+    conn.Read(buffer)
+    fmt.Printf("%s\n", string(buffer))
+             
+
+    // ctrl + c handling
+    c := make(chan os.Signal)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+    go func() {
+        <-c
+        fmt.Println("Bye bye~")
+        input := "5"
+        conn.Write([]byte(input))
+        conn.Close()
+        os.Exit(0)
+    }()
  
-     for {
-         buffer := make([]byte, 1024)
+    for {
+        buffer := make([]byte, 1024)
  
          // print Menu at conosle
-         fmt.Printf("<Menu>\n")
-         fmt.Printf("1) Convert text to UPPER-case\n")
-         fmt.Printf("2) get my IP address and port number\n")
-         fmt.Printf("3) get server request count\n")
-         fmt.Printf("4) get server running time\n")
-         fmt.Printf("5) exit\n")
+        fmt.Printf("<Menu>\n")
+        fmt.Printf("1) Convert text to UPPER-case\n")
+        fmt.Printf("2) get my IP address and port number\n")
+        fmt.Printf("3) get server request count\n")
+        fmt.Printf("4) get server running time\n")
+        fmt.Printf("5) exit\n")
          
-         // get user's choice
-         fmt.Printf("Input option: ")
-         user_choice, err := bufio.NewReader(os.Stdin).ReadString('\n')
-         if err != nil {
-             log.Fatal(err)
-         }
-         fmt.Printf("\n")
+        // get user's choice
+        fmt.Printf("Input option: ")
+        user_choice, err := bufio.NewReader(os.Stdin).ReadString('\n')
+        if err != nil {
+            log.Fatal(err)
+        }
+        fmt.Printf("\n")
  
          // add request type flag(header) (1,2,3,4) at the front of the body
          switch user_choice {

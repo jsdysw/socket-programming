@@ -75,25 +75,50 @@ func handleConnection(client_conn net.Conn, id int) {
     }
 }
 
+// for debugging
+func printUserDatabase() {
+    for key, element := range UserDatabase {
+		fmt.Println("Key:", key, "=>", "Element:%s", element)
+	}
+}
 
-var Total_served_commands int64  // atomic variable
-var LastestId = 0
+type Client struct {
+    Conn net.Conn
+    nickname string
+}
+
+var UserDatabase map[string]*Client  // ip,port : user
 var TotalClient int64  // atomic variable
-var Time_start = time.Now()
 var Listener net.Conn
+var ServerPort string
+var Ip string
+
+var Time_start = time.Now()
+
+var Total_served_commands int64
+
 
 func main() {
-    serverPort := "44089"
-    Total_served_commands = 0
-    TotalClient = 0
+    Ip := "165.194.35.202"
+    ServerPort := "44089"
+    UserDatabase = make(map[string]*Client) 
+
+    TotalClient := 0
+
+    Total_served_commands := 0;
+    fmt.Printf("%d%d\n", TotalClient, Total_served_commands)
+
  
     // create server socket
-    Listener, err:= net.Listen("tcp", ":" + serverPort)
+    Listener, err:= net.Listen("tcp", ":" + ServerPort)
     if err != nil {
         // fmt.Printf("create server socket failed\n")
         log.Fatal(err)
+    } else {
+        fmt.Printf("Server is ready to receive on port %s\n", ServerPort)
+        // fmt.Printf("[Welcome %s to CAU network class chat room at %s.\n", nickname, serverPort)
+        // fmt.Printf("[There are %d users connected.]", len(UserDatabase))
     }
-    fmt.Printf("Server is ready to receive on port %s\n", serverPort)
 
     // ctrl + c handling
     c := make(chan os.Signal)
@@ -101,35 +126,37 @@ func main() {
     go func() {
         <-c
         fmt.Println("Bye bye~")
+        // erase all the clients' connection
         Listener.Close()
         close(c)
         os.Exit(0)
     }()
 
-    // print the number of clients every one minute
-    ticker := time.NewTicker(60 * time.Second)
-    go func() {
-        for {
-            <-ticker.C
-            fmt.Println("The number of conneted clients : ", atomic.LoadInt64(&TotalClient))
-        }
-    }()
-
     for {
         // create client socket
-        conn, err:= Listener.Accept()
+        clientConn, err:= Listener.Accept()
         if err != nil {
             // fmt.Printf("create client socket failed\n")
             log.Fatal(err)
         } else {
-            atomic.AddInt64(&TotalClient, 1); // for mutual exclusion
-            LastestId = LastestId + 1 
-            fmt.Printf("Connection request from %s\n", conn.RemoteAddr().String())
-            fmt.Printf("Client %d connected. Number of connected clients = %d\n", LastestId, atomic.LoadInt64(&TotalClient))
+            // save user info at the UserDatabase
+            _, exists := UserDatabase[clientConn.RemoteAddr().String()]
+            if !exists {
+                nickname := make([]byte, 1024)
+                clientConn.Read(nickname)
+                fmt.Printf("user nickname is  %s\n", string(nickname))
+                UserDatabase[clientConn.RemoteAddr().String()] = &Client{clientConn, string(nickname)}
+                // send welcome message
+                welcomeMessage := "[Welcome "+string(nickname[:32])+" to CAU network class chat room at "+ Ip +":" ServerPort + "]\n" +"[There are " + strconv.Itoa(len(UserDatabase)) + " users connected.]" 
+                clientConn.Write([]byte(welcomeMessage))
+                fmt.Printf("%s\n",welcomeMessage)
+            }
+            fmt.Printf("Connection request from %s\n", clientConn.RemoteAddr().String())
+            printUserDatabase()
         }
         
         // client socket do its work
-        go handleConnection(conn, LastestId)
+        // go handleConnection(conn, LastestId)
     }
 }
  
