@@ -23,7 +23,7 @@ func handleConnection(client *Client) {
     for {
         // read clients chat msg
         buffer := make([]byte, 1024)
-        _, err := client.Conn.Read(buffer)
+        n, err := client.Conn.Read(buffer)
         if err != nil {
             // fmt.Printf("client socket failed to read data from buffer\n")
             log.Fatal(err)
@@ -41,7 +41,7 @@ func handleConnection(client *Client) {
             // printUserDatabase()
             // share leaving msg to connected users
             for _, user := range UserDatabase {
-                user.Conn.Write([]byte(m))
+                user.Conn.Write([]byte("3" + m))
             }
             return
 
@@ -50,74 +50,90 @@ func handleConnection(client *Client) {
             warning := ""
             violation := false
             if strings.Contains(string(bytes.ToUpper(buffer[1:])), "I HATE PROFESSOR") {
-                fmt.Println("i hate professor has detected")
+                // fmt.Println("i hate professor has detected")
                 delete(UserDatabase, string(client.Conn.RemoteAddr().String()));
-                client.Conn.Write([]byte("5"))
+                client.Conn.Write([]byte("2"))
                 warning = "[" + client.nickname + " is disconnected. There are " + strconv.Itoa(len(UserDatabase)) + " users in the chat room.]\n"
                 violation = true
             }
             // share all the message to connected users
             for ipport, user := range UserDatabase {
                 if ipport != string(client.Conn.RemoteAddr().String()) {
-                    m := client.nickname + "> " + string(buffer[1:])
-                    // fmt.Println(m)
-                    user.Conn.Write([]byte(m))
+                    m := client.nickname + "> " + string(buffer[1:n])
+                    user.Conn.Write([]byte("3" + m))
                 }
                 if violation {
                     user.Conn.Write([]byte(warning))
                 }
             }
             if violation {
-                client.Conn.Close()
                 fmt.Print(warning)
+                client.Conn.Close()
                 return;
             }
+        // \command cases
+        case "7":  // \list
+            m := ""
+            for ipport, user := range UserDatabase {
+                split := strings.Split(ipport, ":")
+                m += "<" + user.nickname + ", " + split[0] + ", " + split[1] +">\n"                
+            }
+            client.Conn.Write([]byte("3" + m))
+        case "8":  // \ver
+            client.Conn.Write([]byte("3" + SoftwareVersion + "\n"))
+        case "9":  // \rtt
+            client.Conn.Write([]byte("9"))
+        case "6":  // \dm
+            split := strings.Split(string(buffer), " ")  
+
+            // detect "i hate professor"
+            warning := ""
+            violation := false
+            found := false;
+            if strings.Contains(string(bytes.ToUpper(buffer[1:])), "I HATE PROFESSOR") {
+                // fmt.Println("i hate professor has detected")
+                delete(UserDatabase, string(client.Conn.RemoteAddr().String()));
+                client.Conn.Write([]byte("2"))
+                warning = "[" + client.nickname + " is disconnected. There are " + strconv.Itoa(len(UserDatabase)) + " users in the chat room.]\n"
+                violation = true
+            }
+            // send dm to the specific user
+            for ipport, user := range UserDatabase {
+                if ipport != string(client.Conn.RemoteAddr().String()) {
+                    if strings.Compare(user.nickname, split[1]) == 0 {
+                        m := "from: " + client.nickname + "> " + string(buffer[3 + len(split[1]):n])
+                        user.Conn.Write([]byte("3" + m))
+                        // fmt.Print(m)
+                        found = true
+                        break;
+                    }
+                }
+            }
+
+            if violation {
+                for ipport, user := range UserDatabase {
+                    if ipport != string(client.Conn.RemoteAddr().String()) {
+                        if strings.Compare(user.nickname, split[1]) == 0 {
+                            user.Conn.Write([]byte(warning))
+                        } else {
+                            user.Conn.Write([]byte("3" + warning))
+                        }
+                    }
+                }
+            }
+
+            if found == false {
+                client.Conn.Write([]byte("3There's no such other user, " + split[1] +"\n"))
+            }
+            if violation {
+                fmt.Print(warning)
+                client.Conn.Close()
+                return;
+            }
+        default :
+            fmt.Printf("invalid command\n")
         }
         
-
-        // // check the header of the message
-        // fmt.Printf("Command %s\n",string(buffer[0]))
-        // switch string(buffer[0]) {
-        // case "1": 
-        //     atomic.AddInt64(&Total_served_commands, 1)  // mutul exclusion
-        //     client_conn.Write(bytes.ToUpper(buffer[1:count]))
-        // case "2":
-        //     atomic.AddInt64(&Total_served_commands, 1)
-        //     client_conn.Write([]byte(client_conn.RemoteAddr().String()))   
-        // case "3":
-        //     atomic.AddInt64(&Total_served_commands, 1)
-        //     served_count_string := strconv.FormatInt(atomic.LoadInt64(&Total_served_commands), 10)
-        //     client_conn.Write([]byte(served_count_string)) 
-        // case "4":
-        //     atomic.AddInt64(&Total_served_commands, 1)
-
-        //     time_elapsed := time.Since(Time_start)
-
-        //     // result should be HH:MM:SS format
-        //     hh_s := strconv.Itoa(int(time_elapsed.Hours()))
-        //     if len(hh_s) == 1 {
-        //         hh_s = "0" + hh_s
-        //     }
-        //     mm_s := strconv.Itoa(int(time_elapsed.Minutes())% 60)
-        //     if len(mm_s) == 1 {
-        //         mm_s = "0" + mm_s
-        //     }
-        //     ss_s := strconv.Itoa(int(time_elapsed.Seconds())% 60)
-        //     if len(ss_s) == 1 {
-        //         ss_s = "0" + ss_s
-        //     }
-        //     result := hh_s + ":" + mm_s + ":" + ss_s
-
-        //     client_conn.Write([]byte(result))
-        // case "5":
-        //     // close client connection
-        //     atomic.AddInt64(&TotalClient, -1)
-        //     client_conn.Close()
-        //     // fmt.Printf("Client %d disconnected. Number of connected clients = %d\n", id, atomic.LoadInt64(&TotalClient))
-        //     return
-        // default :
-        //     fmt.Printf("Wrong option\n")
-        // }
     }
 }
 
@@ -136,9 +152,6 @@ func duplicatedNickname(nick string) bool {
     }
     return false;
 }
-func violationOccured(msg string) {
-
-}
 
 type Client struct {
     Conn net.Conn
@@ -147,17 +160,21 @@ type Client struct {
 
 // code 0 : chatting room is full
 // code 1 : duplicated nickname
-// code 3 : message
+// code 2 : "i hate professor" detected
+// code 3 : ordinary message
 // code 5 : close connection
-var UserDatabase map[string]*Client  // ip,port : user
+// code 7 : \list
+// code 6 : \dm
+// code 5 : \exit
+// code 8 : \ver
+// code 9 : \rtt
+var UserDatabase = make(map[string]*Client)   // ip,port : user
 var Listener net.Conn
-var ServerPort string
+var ServerPort = "44089"
 var Time_start = time.Now()
+var SoftwareVersion = "1.0.0"
 
 func main() {
-    ServerPort := "44089"
-    UserDatabase = make(map[string]*Client) 
- 
     // create server socket
     Listener, err:= net.Listen("tcp", ":" + ServerPort)
     if err != nil {
@@ -172,7 +189,7 @@ func main() {
     signal.Notify(c, os.Interrupt, syscall.SIGTERM)
     go func() {
         <-c
-        fmt.Println("Bye bye~")
+        fmt.Println("gg~")
         
         // close all the clients' connection
         for _, user := range UserDatabase {
@@ -193,8 +210,8 @@ func main() {
             log.Fatal(err)
         }
         // check whether chatting room is full, it can handle only 8 users
-        if (len(UserDatabase) >= 3) {
-            fmt.Printf("room is full\n",)
+        if (len(UserDatabase) >= 8) {
+            fmt.Printf("chatting room full. cannot connect\n",)
             clientConn.Write([]byte("0"))
             clientConn.Close()
             continue
@@ -204,11 +221,11 @@ func main() {
         _, exists := UserDatabase[clientConn.RemoteAddr().String()]
         if !exists {
             nickname := make([]byte, 1024)
-            clientConn.Read(nickname)
+            n, _ := clientConn.Read(nickname)
             // fmt.Printf("user nickname is  %s\n", string(nickname[:32]))
 
             // check whether nickname is already taken
-            if duplicatedNickname(string(nickname[:32])) {
+            if duplicatedNickname(string(nickname[:n])) {
                 fmt.Printf("duplicated nickname\n",)
                 clientConn.Write([]byte("1"))
                 clientConn.Close()  
@@ -216,15 +233,15 @@ func main() {
             }
 
             // add user to the database
-            UserDatabase[clientConn.RemoteAddr().String()] = &Client{clientConn, string(nickname[:32])}
+            UserDatabase[clientConn.RemoteAddr().String()] = &Client{clientConn, string(nickname[0:n])}
 
             // send welcome message
-            welcomeMessage := "[Welcome "+string(nickname[:32])+" to CAU network class chat room at 165.194.35.202:" + ServerPort + "]\n" +"[There are " + strconv.Itoa(len(UserDatabase)) + " users connected.]\n" 
+            welcomeMessage := "[Welcome "+string(nickname[:n])+" to CAU network class chat room at 165.194.35.202:" + ServerPort + "]\n" +"[There are " + strconv.Itoa(len(UserDatabase)) + " users connected.]\n" 
             // clientConn.Write([]byte(welcomeMessage))
-            log := string(nickname[:32]) + " joined from " + clientConn.RemoteAddr().String() + ". There are " + strconv.Itoa(len(UserDatabase)) + " users connected"
+            log := string(nickname[0:n]) + " joined from " + clientConn.RemoteAddr().String() + ". There are " + strconv.Itoa(len(UserDatabase)) + " users connected"
             fmt.Printf("%s\n",log)
             for _, user := range UserDatabase {
-                user.Conn.Write([]byte(welcomeMessage))
+                user.Conn.Write([]byte("3"+ welcomeMessage))
             }
         }
         // fmt.Printf("Connection request from %s\n", clientConn.RemoteAddr().String())
