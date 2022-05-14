@@ -22,11 +22,20 @@ func updateMessages(client_conn net.Conn) {
     for {
         buffer := make([]byte, 1024)
         client_conn.Read(buffer)
+        if string(buffer[0]) == "5" {
+            fmt.Println("gg~")
+            client_conn.Close()
+            os.Exit(0)
+        }
         fmt.Printf("%s", string(buffer))
     }
 }
 
- 
+// code 0 : chatting room is full
+// code 1 : nickname is duplicated
+// code 3 : cahtting message
+// code 5 : server has been quitted
+
 func main() {
     // make TCP Connection with server
     serverName := "127.0.0.1"
@@ -46,6 +55,7 @@ func main() {
     fmt.Printf("my nickname %s\n", argsWithProg)
     // localAddr := conn.LocalAddr().(*net.TCPAddr)    
     // fmt.Printf("Client is running on port %d\n", localAddr.Port)
+
     // wait chat room attend permission
     n, err := conn.Read(buffer)
     if string(buffer[0]) == "0" {
@@ -57,14 +67,14 @@ func main() {
     }
 
     // read welcome msg from the server and print
-    fmt.Printf("%s\n", string(buffer[:n]))
+    fmt.Printf("%s", string(buffer[:n]))
              
     // ctrl + c handling
     c := make(chan os.Signal)
     signal.Notify(c, os.Interrupt, syscall.SIGTERM)
     go func() {
         <-c
-        fmt.Println("Bye bye~")
+        fmt.Println("gg~")
         input := "5"
         conn.Write([]byte(input))
         conn.Close()
@@ -79,7 +89,7 @@ func main() {
         if err != nil {
             log.Fatal(err)
         }
-        conn.Write([]byte(message))
+        conn.Write([]byte("3" + message))
  
          // add request type flag(header) (1,2,3,4) at the front of the body
     //      switch user_choice {
