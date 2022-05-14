@@ -57,8 +57,8 @@ var time_start = time.Now()
 
 func main() {
     // make TCP Connection with server
-    // serverName := "127.0.0.1"
-    serverName := "nsl2.cau.ac.kr"
+    serverName := "127.0.0.1"
+    // serverName := "nsl2.cau.ac.kr"
     serverPort := "44089"
     argsWithProg := os.Args[1] // client nickname
     buffer := make([]byte, 4096)
