@@ -131,6 +131,11 @@ func clear() {
         cmd.Stdout = os.Stdout
         cmd.Run()
     }
+    clearMap["darwin"] = func() {
+        cmd := exec.Command("clear") //darwin example, its tested
+        cmd.Stdout = os.Stdout
+        cmd.Run()
+    }
 
     value, ok := clearMap[runtime.GOOS] //runtime.GOOS -> linux, windows, darwin etc.
     if ok {                             //if we defined a clearMap func for that platform:
