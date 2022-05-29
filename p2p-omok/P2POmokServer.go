@@ -19,6 +19,34 @@ import (
     "strings"
 )
 
+
+func channelForFirstPlayerMsg(client *Client) {
+    for {
+        // read clients chat msg
+        buffer := make([]byte, 1024)
+        client.Conn.Read(buffer)
+        
+        switch string(buffer[0]) {
+        case "5": // close connection
+            // leaving message
+            m := "<" + client.nickname + "> left. There are " + strconv.Itoa(len(UserDatabase)-1) + " users now\n"
+            fmt.Print(m)
+
+            delete(UserDatabase, string(client.Conn.RemoteAddr().String()));
+            client.Conn.Close()
+            // printUserDatabase()
+            return
+        case "3":
+            // fmt.Printf("matching finished\n")
+        default :
+            fmt.Printf(string(buffer))
+            fmt.Printf("matching done\n")
+            return
+        }
+        
+    }
+}
+
 // for debugging
 func printUserDatabase() {
     fmt.Println("-----------------------------------------------")
@@ -53,6 +81,12 @@ var Listener net.Conn
 var ServerPort = "54089"
 var Time_start = time.Now()
 var SoftwareVersion = "1.0.0"
+var oddPlayer = ""
+var evenPlayer = ""
+var oddUdpIp = ""
+var evenUdpIp = ""
+var oddUdpPort = ""
+var evenUdpPort = ""
 
 func main() {
     // create server socket
@@ -82,12 +116,7 @@ func main() {
         os.Exit(0)
     }()
 
-    oddPlayer := ""
-    evenPlayer := ""
-    oddUdpIp := ""
-    evenUdpIp := ""
-    oddUdpPort := ""
-    evenUdpPort := ""
+    
 
     for {
         // create client socket
@@ -102,8 +131,9 @@ func main() {
         if !exists {
             nicknameAndUdpAddr := make([]byte, 1024)
             n, _ := clientConn.Read(nicknameAndUdpAddr)
+
             // fmt.Printf("user nickname is  %s\n", string(nickname[:32]))
-            s := strings.Split(string(nicknameAndUdpAddr[:n]), " ")
+            s := strings.Split(string(nicknameAndUdpAddr[1:n]), " ")
             nick := s[0]
             udpAddr := s[1]
 
@@ -120,16 +150,39 @@ func main() {
 
             welcomeMessage := "welcome "+string(nick)+" to p2p-omok server at 165.194.35.202:" + ServerPort + "\n"
 
+            log := string(nick) + " udp addr " + udpAddr + ". There are " + strconv.Itoa(len(UserDatabase)) + " users connected."
+            fmt.Printf("%s\n",log)
+
             // send welcome message
             if (len(UserDatabase) % 2  == 0) {
                 evenUdpPort = udpAddr
                 evenPlayer = clientConn.RemoteAddr().String()
                 s := strings.Split(clientConn.RemoteAddr().String(), ":")
                 evenUdpIp = s[0]
-                welcomeMessage = welcomeMessage + UserDatabase[oddPlayer].nickname + " is waiting for you (" + oddUdpIp + ":" + oddUdpPort + ").\n" + UserDatabase[oddPlayer].nickname + " plays first.\n"
+                welcomeMessage = welcomeMessage + UserDatabase[oddPlayer].nickname + " is waiting for you (" + oddUdpIp + ":" + oddUdpPort + ").\n"
                 clientConn.Write([]byte("3" + welcomeMessage))
-                UserDatabase[oddPlayer].Conn.Write([]byte("3" + UserDatabase[evenPlayer].nickname + " joined (" + evenUdpIp + ":" + evenUdpPort + "). you play first.\n"))
 
+                buffer := make([]byte, 1024)
+                clientConn.Read(buffer)
+
+                UserDatabase[evenPlayer].Conn.Write([]byte("3" + UserDatabase[oddPlayer].nickname + " plays first.\n"))
+                UserDatabase[oddPlayer].Conn.Write([]byte("3" + UserDatabase[evenPlayer].nickname + " joined (" + evenUdpIp + ":" + evenUdpPort + "). you play first.\n"))
+            
+                // buffer := make([]byte, 1024)
+                // print("read start\n")
+                clientConn.Read(buffer)
+                // print("read done\n")
+
+                UserDatabase[evenPlayer].Conn.Write([]byte("5" + UserDatabase[oddPlayer].nickname + " " + oddUdpIp + ":" + oddUdpPort + " 0"))
+                UserDatabase[oddPlayer].Conn.Write([]byte("5" + UserDatabase[evenPlayer].nickname + " " + evenUdpIp + ":" + evenUdpPort + " 1"))
+
+                UserDatabase[oddPlayer].Conn.Close()
+                UserDatabase[evenPlayer].Conn.Close()
+
+                delete(UserDatabase, string(oddPlayer));
+                delete(UserDatabase, string(evenPlayer));
+
+                printUserDatabase()
             } else {
                 oddUdpPort = udpAddr
                 oddPlayer = clientConn.RemoteAddr().String()
@@ -137,25 +190,7 @@ func main() {
                 oddUdpIp = s[0]
                 welcomeMessage = welcomeMessage + "waiting for an opponent\n"
                 clientConn.Write([]byte("3" + welcomeMessage))
-            }
-            log := string(nick) + " udp addr " + udpAddr + ". There are " + strconv.Itoa(len(UserDatabase)) + " users connected."
-            fmt.Printf("%s\n",log)
-                
-            // close TCP connection
-            if (len(UserDatabase) % 2  == 0) {
-                // wait for ack message from client
-                buffer := make([]byte, 1024)
-                UserDatabase[oddPlayer].Conn.Read(buffer)
-                
-                UserDatabase[oddPlayer].Conn.Write([]byte("5" + UserDatabase[evenPlayer].nickname + " " + evenUdpIp + ":" + evenUdpPort + " 1"))
-                UserDatabase[evenPlayer].Conn.Write([]byte("5" + UserDatabase[oddPlayer].nickname + " " + oddUdpIp + ":" + oddUdpPort + " 0"))
-
-                UserDatabase[oddPlayer].Conn.Close()
-                UserDatabase[evenPlayer].Conn.Close()
-
-                delete(UserDatabase, string(oddPlayer));
-                delete(UserDatabase, string(evenPlayer));
-                // printUserDatabase()
+                go channelForFirstPlayerMsg(UserDatabase[clientConn.RemoteAddr().String()])
             }
         }
     }

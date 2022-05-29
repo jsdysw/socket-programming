@@ -63,7 +63,7 @@ func printBoard(b Board) {
     for j := 0; j < 2*Col+3; j++ {
         fmt.Print("-")
     }
-    fmt.Println()
+    fmt.Print("\n\n")
 }
 
 func checkWin(b Board, x, y int) int {
@@ -158,12 +158,10 @@ func clear() {
 
 func gameStart() {
     opponent_addr, _ := net.ResolveUDPAddr("udp", OpponentAddr)
-    print("send to ")
-    print(opponent_addr.String())
 
-    // print board
+    // initialize board
     board = Board{}
-    x, y, count, win, cnt := -1, -1, 0, 0, 0
+    x, y, win, cnt := -1, -1, 0, 0
     for i := 0; i < Row; i++ {
         var tempRow []int
         for j := 0; j < Col; j++ {
@@ -194,8 +192,6 @@ func gameStart() {
                 if (len(result) == 2) {
                     x, _ = strconv.Atoi(result[0])
                     y, _ = strconv.Atoi(result[1])
-                    // println(result[0])
-                    // println(result[1])
                     cnt = 2
                 } else {
                     cnt = 0
@@ -207,10 +203,10 @@ func gameStart() {
                     fmt.Println("gg~")
                     // conn.Write([]byte("7"))
                 case "\\exit\n":
-                    fmt.Println("gg~")
-                    // conn.Write([]byte("5"))
-                    // conn.Close()
-                    // os.Exit(0)
+                    fmt.Println("Bye~")
+                    pconn.WriteTo([]byte("5"), opponent_addr)
+                    pconn.Close()
+                    os.Exit(0)
                 default:
                     fmt.Println("invalid command")
                 }
@@ -233,6 +229,10 @@ func gameStart() {
             fmt.Println("error, already used!")
             time.Sleep(1 * time.Second)
             continue
+        } else if win != 0 || stoneCount == Row*Col {
+            fmt.Println("game is over")
+            time.Sleep(1 * time.Second)
+            continue
         } else {
             pconn.WriteTo([]byte("9" + userInput), opponent_addr)
         }
@@ -249,13 +249,14 @@ func gameStart() {
         win = checkWin(board, x, y)
         if win != 0 {
             fmt.Printf("player %d wins!\n", win)
-            break
+            continue
         }
 
-        count += 1
-        if count == Row*Col {
+        stoneCount += 1
+        // if stoneCount == Row*Col {
+        if stoneCount == 2 {
             fmt.Printf("draw!\n")
-            break
+            continue
         }
         turn = (turn + 1) % 2
     }
@@ -268,7 +269,11 @@ func readOppnentMessage() {
             
         switch string(buffer[0]) {
         case "3":
-            fmt.Printf("%s> %s", OpponentNick, string(buffer[1:count]))         
+            fmt.Printf("%s> %s", OpponentNick, string(buffer[1:count]))
+        case "5":
+            fmt.Println("Bye~")
+            pconn.Close()
+            return
         case "9":
             fmt.Printf("stone %s", string(buffer[1:count]))    
             re := regexp.MustCompile("[0-9]+")
@@ -289,8 +294,9 @@ func readOppnentMessage() {
                 break
             }
 
-            count += 1
-            if count == Row*Col {
+            stoneCount += 1
+            // if stoneCount == Row*Col {
+            if stoneCount == 2 {
                 fmt.Printf("draw!\n")
                 break
             }
@@ -301,10 +307,23 @@ func readOppnentMessage() {
     }
 }
 func waitForOpponent(client_conn net.Conn) {
+    // ctrl + c handling
+    c := make(chan os.Signal)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+    go func() {
+        <-c
+        fmt.Println("gg~")
+        client_conn.Write([]byte("5"))
+        client_conn.Close()
+        pconn.Close()
+        os.Exit(0)
+    }()
+
     buffer := make([]byte, 1024)
 
     for {
         n, _ := client_conn.Read(buffer)
+        fmt.Printf(string(buffer))
 
         switch string(buffer[0]) {
         case "5":
@@ -337,6 +356,7 @@ var OpponentAddr = ""
 var myAddr = ""
 var TurnFlag = 0
 var turn = 0
+var stoneCount = 0
 var pconn net.PacketConn
 var board = Board{}
 
@@ -357,7 +377,7 @@ func main() {
     localAddr := pconn.LocalAddr().(*net.UDPAddr)
 
     // send client's nickname and udp address to the server
-    conn.Write([]byte(argsWithProg + " " + strconv.Itoa(localAddr.Port)))
+    conn.Write([]byte("3" + argsWithProg + " " + strconv.Itoa(localAddr.Port)))
 
     // wait for permission
     _, err = conn.Read(buffer)
@@ -369,24 +389,26 @@ func main() {
     if string(buffer[0]) == "3" {
         // read welcome msg from the server and print
         fmt.Printf("%s", string(buffer[1:]))
+        conn.Write([]byte("3 ack"))
     } 
-
-    // ctrl + c handling
-    c := make(chan os.Signal)
-    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-    go func() {
-        <-c
-        fmt.Println("gg~")
-        conn.Write([]byte("5"))
-        conn.Close()
-        os.Exit(0)
-    }()
 
     waitForOpponent(conn)
     fmt.Println("\n")
 
     println("my udp address : ", localAddr.String())
     println("opponent udp address : ", OpponentAddr)
+
+    // ctrl + c handling
+    c := make(chan os.Signal)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+    go func() {
+        <-c
+        fmt.Println("Bye~")
+        opponent_addr, _ := net.ResolveUDPAddr("udp", OpponentAddr)
+        pconn.WriteTo([]byte("5"), opponent_addr)
+        pconn.Close()
+        os.Exit(0)
+    }()
     
     go readOppnentMessage()
     gameStart()
