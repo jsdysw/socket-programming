@@ -40,7 +40,7 @@ func channelForFirstPlayerMsg(client *Client) {
             // fmt.Printf("matching finished\n")
         default :
             fmt.Printf(string(buffer))
-            fmt.Printf("matching done\n")
+            // fmt.Printf("matching done\n")
             return
         }
         
@@ -150,8 +150,8 @@ func main() {
 
             welcomeMessage := "welcome "+string(nick)+" to p2p-omok server at 165.194.35.202:" + ServerPort + "\n"
 
-            log := string(nick) + " udp addr " + udpAddr + ". There are " + strconv.Itoa(len(UserDatabase)) + " users connected."
-            fmt.Printf("%s\n",log)
+            log := string(nick) + " joined from " + clientConn.RemoteAddr().String() + ". UDP port " + udpAddr + ".\n" + strconv.Itoa(len(UserDatabase)) + " user connected,"
+            fmt.Printf("%s",log)
 
             // send welcome message
             if (len(UserDatabase) % 2  == 0) {
@@ -179,10 +179,13 @@ func main() {
                 UserDatabase[oddPlayer].Conn.Close()
                 UserDatabase[evenPlayer].Conn.Close()
 
+                log := " notifying " + UserDatabase[oddPlayer].nickname + " and " + UserDatabase[evenPlayer].nickname + ".\n" + UserDatabase[oddPlayer].nickname + " and " + UserDatabase[evenPlayer].nickname + " disconnected."
+                fmt.Printf("%s\n",log)
+
                 delete(UserDatabase, string(oddPlayer));
                 delete(UserDatabase, string(evenPlayer));
 
-                printUserDatabase()
+                // printUserDatabase()
             } else {
                 oddUdpPort = udpAddr
                 oddPlayer = clientConn.RemoteAddr().String()
@@ -191,6 +194,9 @@ func main() {
                 welcomeMessage = welcomeMessage + "waiting for an opponent\n"
                 clientConn.Write([]byte("3" + welcomeMessage))
                 go channelForFirstPlayerMsg(UserDatabase[clientConn.RemoteAddr().String()])
+
+                log := " waiting for another"
+                fmt.Printf("%s\n",log)
             }
         }
     }

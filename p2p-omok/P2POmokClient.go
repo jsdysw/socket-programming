@@ -161,7 +161,7 @@ func gameStart() {
 
     // initialize board
     board = Board{}
-    x, y, win, cnt := -1, -1, 0, 0
+    x, y, cnt := -1, -1, 0
     for i := 0; i < Row; i++ {
         var tempRow []int
         for j := 0; j < Col; j++ {
@@ -172,18 +172,43 @@ func gameStart() {
     printBoard(board)
 
     for {
-        userInput, err := bufio.NewReader(os.Stdin).ReadString('\n')
-        pconn.WriteTo([]byte(userInput), opponent_addr)
-        if err != nil {
-            log.Fatal(err)
+        // 10 seconds timer
+        if !timerOn && TurnFlag != turn && win == 0 {
+            timer1 = time.NewTimer(time.Second * 10)
+            go func() {
+                // fmt.Println("timer start")
+                <-timer1.C
+                pconn.WriteTo([]byte("7"), opponent_addr)
+                // fmt.Println("you lose")
+                fmt.Println("\nyou lose")
+                if TurnFlag == 0 {
+                    win = 1
+                } else {
+                    win = 2
+                }
+                return
+            }()
+            timerOn = true
         }
-        if userInput == "\n" {
-            continue
+
+        userInput, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+        pconn.WriteTo([]byte(userInput), opponent_addr)
+        
+        for {
+            if userInput == "\n" {
+                userInput, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+            } else {
+                break;
+            }
         }
 
         if userInput[0] == '\\' {
             if userInput[1] == '\\' {
-                if (TurnFlag == turn) {
+                if win != 0 {
+                    // println("game is over")
+                    continue
+                }
+                if TurnFlag == turn {
                     println("not your turn")
                     continue
                 } 
@@ -200,8 +225,23 @@ func gameStart() {
             } else {
                 switch userInput {
                 case "\\gg\n":
-                    fmt.Println("gg~")
-                    // conn.Write([]byte("7"))
+                    // if game is over ignore gg msg
+                    if win != 0 {
+                        continue
+                    }
+                    if timer1 != nil {
+                        timer1.Stop()
+                        timerOn = false
+                    }
+
+                    pconn.WriteTo([]byte("7"), opponent_addr)
+                    fmt.Println("you lose")
+                    if TurnFlag == 0 {
+                        win = 1
+                    } else {
+                        win = 2
+                    }
+                    continue
                 case "\\exit\n":
                     fmt.Println("Bye~")
                     pconn.WriteTo([]byte("5"), opponent_addr)
@@ -230,10 +270,14 @@ func gameStart() {
             time.Sleep(1 * time.Second)
             continue
         } else if win != 0 || stoneCount == Row*Col {
-            fmt.Println("game is over")
+            // fmt.Println("game is over")
             time.Sleep(1 * time.Second)
             continue
         } else {
+            if timer1 != nil {
+                timer1.Stop()
+                timerOn = false
+            }
             pconn.WriteTo([]byte("9" + userInput), opponent_addr)
         }
 
@@ -246,15 +290,21 @@ func gameStart() {
         clear()
         printBoard(board)
 
-        win = checkWin(board, x, y)
-        if win != 0 {
-            fmt.Printf("player %d wins!\n", win)
-            continue
+        if win == 0 {
+            win = checkWin(board, x, y)
+            if win != 0 {
+                if win == 1 && TurnFlag == 1{
+                    fmt.Printf("you win\n")
+                } else {
+                    fmt.Printf("you lose\n")
+                }
+                continue
+            }
         }
 
         stoneCount += 1
-        // if stoneCount == Row*Col {
-        if stoneCount == 2 {
+        if stoneCount == Row*Col {
+        // if stoneCount == 2 {
             fmt.Printf("draw!\n")
             continue
         }
@@ -263,17 +313,32 @@ func gameStart() {
 }
 
 func readOppnentMessage() {
-    buffer := make([]byte, 1024)
     for {
+        buffer := make([]byte, 1024)
         count, _, _:= pconn.ReadFrom(buffer)
-            
+
         switch string(buffer[0]) {
         case "3":
             fmt.Printf("%s> %s", OpponentNick, string(buffer[1:count]))
         case "5":
-            fmt.Println("Bye~")
+            fmt.Println("opponent has left")
+            if win == 0 {
+                fmt.Printf("you win\n")
+                if TurnFlag == 1 {
+                    win = 1
+                } else {
+                    win = 2
+                }
+            }
             pconn.Close()
             return
+        case "7":
+            if TurnFlag == 0 {
+                win = 1
+            } else {
+                win = 2
+            }
+            fmt.Printf("\nyou win\n")
         case "9":
             fmt.Printf("stone %s", string(buffer[1:count]))    
             re := regexp.MustCompile("[0-9]+")
@@ -288,19 +353,42 @@ func readOppnentMessage() {
             }
             clear()
             printBoard(board)
-            win := checkWin(board, x, y)
+            win = checkWin(board, x, y)
             if win != 0 {
-                fmt.Printf("player %d wins!\n", win)
+                if win == 1 && TurnFlag == 1{
+                    fmt.Printf("you win\n")
+                } else {
+                    fmt.Printf("you lose\n")
+                }
                 break
             }
 
             stoneCount += 1
-            // if stoneCount == Row*Col {
-            if stoneCount == 2 {
+            if stoneCount == Row*Col {
+            // if stoneCount == 2 {
                 fmt.Printf("draw!\n")
                 break
             }
             turn = (turn + 1) % 2
+
+            if TurnFlag != turn && win == 0 {
+                // fmt.Println("timer start")
+                timer1 = time.NewTimer(time.Second * 10)
+                timerOn = true
+                go func() {
+                    opponent_addr, _ := net.ResolveUDPAddr("udp", OpponentAddr)
+                    // fmt.Println("timer start") 
+                    <-timer1.C
+                    pconn.WriteTo([]byte("7"), opponent_addr)
+                    fmt.Println("you lose")
+                    if TurnFlag == 0 {
+                        win = 1
+                    } else {
+                        win = 2
+                    }
+                    return
+                }()
+            }  
         default:
             // fmt.Println("wrong code " + string(buffer[0]))
         }
@@ -312,9 +400,11 @@ func waitForOpponent(client_conn net.Conn) {
     signal.Notify(c, os.Interrupt, syscall.SIGTERM)
     go func() {
         <-c
-        fmt.Println("gg~")
+        fmt.Println("Bye~")
         client_conn.Write([]byte("5"))
         client_conn.Close()
+        opponent_addr, _ := net.ResolveUDPAddr("udp", OpponentAddr)
+        pconn.WriteTo([]byte("5"), opponent_addr)
         pconn.Close()
         os.Exit(0)
     }()
@@ -323,7 +413,7 @@ func waitForOpponent(client_conn net.Conn) {
 
     for {
         n, _ := client_conn.Read(buffer)
-        fmt.Printf(string(buffer))
+        // fmt.Printf(string(buffer))
 
         switch string(buffer[0]) {
         case "5":
@@ -359,7 +449,9 @@ var turn = 0
 var stoneCount = 0
 var pconn net.PacketConn
 var board = Board{}
-
+var win = 0
+var timerOn = false
+var timer1 *time.Timer
 
 func main() {
     // make TCP Connection with server
@@ -394,21 +486,6 @@ func main() {
 
     waitForOpponent(conn)
     fmt.Println("\n")
-
-    println("my udp address : ", localAddr.String())
-    println("opponent udp address : ", OpponentAddr)
-
-    // ctrl + c handling
-    c := make(chan os.Signal)
-    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-    go func() {
-        <-c
-        fmt.Println("Bye~")
-        opponent_addr, _ := net.ResolveUDPAddr("udp", OpponentAddr)
-        pconn.WriteTo([]byte("5"), opponent_addr)
-        pconn.Close()
-        os.Exit(0)
-    }()
     
     go readOppnentMessage()
     gameStart()
